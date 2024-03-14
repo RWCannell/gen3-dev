@@ -1,0 +1,320 @@
+global:
+  dev: true
+  postgres:
+    dbCreate: true
+    master:
+      username: postgres
+      password: postgres
+      host:
+      port: "5432"
+  hostname: cloud08.core.wits.ac.za
+  revproxyArn: arn:aws:acm:us-east-1:123456:certificate
+  dictionaryUrl: https://s3.amazonaws.com/dictionary-artifacts/datadictionary/develop/schema.json
+  portalApp: gitops
+  publicDataSets: true
+  tierAccessLevel: libre
+  tierAccessLimit: 1000
+  netPolicy: true
+  dispatcherJobNum: 10
+  ddEnabled: false
+
+ambassador:
+  enabled: true
+  image:
+    repository:
+    tag:
+
+arborist:
+  enabled: true
+  image:
+    repository: quay.io/cdis/arborist
+    pullPolicy: IfNotPresent
+    tag: ""
+
+argo-wrapper:
+  enabled: true
+  image:
+    repository:
+    tag:
+
+audit:
+  enabled: true
+  image:
+    repository:
+    tag:
+
+aws-es-proxy:
+  enabled: false
+  image:
+    repository: quay.io/cdis/aws-es-proxy
+    tag: "master"
+  esEndpoint: test.us-east-1.es.amazonaws.com
+  secrets:
+    awsAccessKeyId: ""
+    awsSecretAccessKey: ""
+
+etl:
+  enabled: true
+  image:
+    repository:
+    tag:
+
+fence:
+  enabled: true
+  image:
+    repository:
+    pullPolicy:
+    tag:
+  FENCE_CONFIG:
+    APP_NAME: 'Gen3 Data Commons with K3s'
+    OPENID_CONNECT:
+      google:
+        client_id: ""
+        client_secret: ""
+    AWS_CREDENTIALS:
+      "gen3-user":
+        aws_access_key_id: ""
+        aws_secret_access_key: ""
+    S3_BUCKETS:
+      # Name of the actual s3 bucket
+      gen3-bucket:
+        cred: "gen3-user"
+        region: us-east-1
+      gen3-user-bucket:
+        cred: "gen3-user"
+        region: us-east-1
+      gen3-local-bucket:
+        cred: "minio-user"
+        MINIO_ROOT_USER: "",
+        MINIO_ROOT_PASSWORD: ""
+    # This is important for data upload.
+    DATA_UPLOAD_BUCKET: "gen3-bucket"
+  # -- (string) USER YAML. Passed in as a multiline string.
+  USER_YAML:
+  # -- (map) Configuration options for usersync cronjob.
+  usersync:
+    # -- (bool) Whether to run Fence usersync or not.
+    usersync: false
+    # -- (map) Secret information
+    secrets:
+      # -- (str) AWS access key ID for usersync S3 bucket
+      awsAccessKeyId: ""
+      # -- (str) AWS secret access key for usersync S3 bucket
+      awsSecretAccessKey: ""
+    # -- (string) The cron schedule expression to use in the usersync cronjob. Runs every 30 minutes by default.
+    schedule: "*/30 * * * *"
+    # -- (string) To set a custom image for pulling the user.yaml file from S3. Default is the Gen3 Awshelper image.
+    custom_image:
+    # -- (bool) Whether to sync data from dbGaP.
+    syncFromDbgap: false
+    # -- (bool) Force attempting a dbgap sync if "true", falls back on user.yaml
+    addDbgap: false
+    # -- (bool) Forces ONLY a dbgap sync if "true", IGNORING user.yaml
+    onlyDbgap: false
+    # -- (string) Path to the user.yaml file in S3.
+    userYamlS3Path: s3://gen3-user-bucket/user.yaml
+    # -- (string) Slack webhook endpoint used with certain jobs.
+    slack_webhook: None
+    # -- (bool) Will echo what files we are seeing on dbgap ftp to Slack.
+    slack_send_dbgap: false
+
+guppy:
+  enabled: false
+  image:
+    repository:
+    tag:
+
+hatchery:
+  enabled: true
+  image:
+    repository:
+    tag:
+
+  hatchery:
+    sidecarContainer:
+      # -- (string) The maximum amount of CPU the sidecar container can use
+      cpu-limit: '0.1'
+      # -- (string) The maximum amount of memory the sidecar container can use
+      memory-limit: 256Mi
+      # -- (string) The sidecar image.
+      image: quay.io/cdis/ecs-ws-sidecar:master
+      # -- (map) Environment variables to pass to the sidecar container
+      env:
+        NAMESPACE: "{{ .Release.Namespace }}"
+        HOSTNAME: "{{ .Values.global.hostname }}"
+      # -- (list) Arguments to pass to the sidecare container.
+      args: []
+      # -- (list) Commands to run for the sidecar container.
+      command:
+      - "/bin/bash"
+      - "./sidecar.sh"
+      lifecycle-pre-stop:
+      - su
+      - "-c"
+      - echo test
+      - "-s"
+      - "/bin/sh"
+      - root
+    containers:
+    - # -- (int) port to proxy traffic to in docker container
+      target-port: 8888
+      # -- (string) cpu limit of workspace container
+      cpu-limit: '1.0'
+      # -- (string) memory limit of workspace container
+      memory-limit: 2Gi
+      # -- (string) name of workspace
+      name: "(Tutorials) Example Analysis Jupyter Lab Notebooks"
+      # -- (string) docker image for workspace
+      image: quay.io/cdis/heal-notebooks:combined_tutorials__latest
+      # -- environment variables for workspace container
+      env:
+        FRAME_ANCESTORS: https://{{ .Values.global.hostname }}
+      args:
+      - "--NotebookApp.base_url=/lw-workspace/proxy/"
+      - "--NotebookApp.default_url=/lab"
+      - "--NotebookApp.password=''"
+      - "--NotebookApp.token=''"
+      - "--NotebookApp.shutdown_no_activity_timeout=5400"
+      - "--NotebookApp.quit_button=False"
+      command:
+      - start-notebook.sh
+      path-rewrite: "/lw-workspace/proxy/"
+      use-tls: 'false'
+      ready-probe: "/lw-workspace/proxy/"
+      lifecycle-post-start:
+      - "/bin/sh"
+      - "-c"
+      - export IAM=`whoami`; rm -rf /home/$IAM/pd/dockerHome; rm -rf /home/$IAM/pd/lost+found; ln -s /data /home/$IAM/pd/; true
+      user-uid: 1000
+      fs-gid: 100
+      user-volume-location: "/home/jovyan/pd"
+      gen3-volume-location: "/home/jovyan/.gen3"
+
+indexd:
+  enabled: true
+  image:
+    repository:
+    tag:
+  defaultPrefix: "PREFIX/"
+
+
+manifestservice:
+  enabled: true
+  image:
+    repository:
+    tag:
+
+metadata:
+  enabled: true
+  image:
+    repository:
+    tag:
+
+peregrine:
+  enabled: true
+  image:
+    repository:
+    pullPolicy:
+    tag:
+
+pidgin:
+  enabled: true
+  image:
+    repository:
+    tag:
+
+portal:
+  enabled: true
+  image:
+    repository:
+    tag:
+
+gitops:
+  # -- (string) multiline string - gitops.json
+  json:
+  # -- (string) - favicon in base64
+  favicon:
+  # -- (string) - multiline string - gitops.css
+  css:
+  # -- (string) - logo in base64
+  logo:
+  # -- (string) - createdby.png - base64
+  createdby:
+  sponsors:
+
+
+requestor:
+  enabled: false
+  image:
+    repository:
+    tag:
+
+revproxy:
+  enabled: true
+  image:
+    repository:
+    tag:
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+    # -- (list) Where to route the traffic.
+    hosts:
+    - host: chart-example.local
+    # -- (list) To secure an Ingress by specifying a secret that contains a TLS private key and certificate.
+    tls: []
+
+sheepdog:
+  enabled: true
+  image:
+    repository:
+    tag:
+
+ssjdispatcher:
+  enabled: false
+  image:
+    repository:
+    tag:
+  # -- (map) Values for ssjdispatcher secret.
+  ssjcreds:
+    # -- (string) Sqs queue to monitor.
+    sqsUrl: ""
+    # -- (string) Name of the ssj job.
+    jobName: "indexing"
+    # -- (string) URL upload pattern that will trigger an event in S3 to send a message to SQS.
+    jobPattern: "s3://gen3-bucket/*"
+    # -- (string) Indexd service URL.
+    jobUrl: "http://indexd-service/index"
+    # -- (string) Name of the user the job will run with.
+    jobUser: "ssj"
+    # -- (string) Password for the job.
+    jobPassword: "replace_with_password"
+    # -- (string) The amount of CPU the job requests.
+    jobRequestCpu: "500m"
+    # -- (string) The amount of memory the job requests.
+    jobRequestMem: "0.5Gi"
+    # -- (string) URL to reach metadata service endpoint.
+    metadataserviceUrl: "http://revproxy-service/mds"
+    # -- (string) Username for the metadata service.
+    metadataserviceUsername: "gateway"
+    # -- (string) Password for the metadata service.
+    metadataservicePassword: "replace_with_password"
+
+wts:
+  enabled: true
+  image:
+    repository:
+    tag:
+
+secrets:
+  awsAccessKeyId: ""
+  awsSecretAccessKey: ""
+
+# Disable persistence by default so we can spin up and down ephemeral environments
+postgresql:
+  primary:
+    persistence:
+      # -- (bool) Option to persist the dbs data.
+      enabled: false
